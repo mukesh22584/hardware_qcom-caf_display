@@ -85,7 +85,7 @@ class DisplayBase : public DisplayInterface {
   virtual bool IsUnderscanSupported() {
     return false;
   }
-  virtual DisplayError SetPanelBrightness(float brightness) {
+  virtual DisplayError SetPanelBrightness(int level) {
     return kErrorNotSupported;
   }
   virtual DisplayError OnMinHdcpEncryptionLevelChange(uint32_t min_enc_level) {
@@ -116,7 +116,7 @@ class DisplayBase : public DisplayInterface {
   virtual DisplayError GetDefaultColorMode(std::string *color_mode);
   virtual DisplayError SetCursorPosition(int x, int y);
   virtual DisplayError GetRefreshRateRange(uint32_t *min_refresh_rate, uint32_t *max_refresh_rate);
-  virtual DisplayError GetPanelBrightness(float *brightness) {
+  virtual DisplayError GetPanelBrightness(int *level) {
     return kErrorNotSupported;
   }
   virtual DisplayError SetVSyncState(bool enable);
