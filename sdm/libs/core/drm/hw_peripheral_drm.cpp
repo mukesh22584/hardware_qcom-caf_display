@@ -118,6 +118,18 @@ DisplayError HWPeripheralDRM::GetDynamicDSIClock(uint64_t *bit_clk_rate) {
   return kErrorNone;
 }
 
+DisplayError HWPeripheralDRM::SetDisplayMode(const HWDisplayMode hw_display_mode) {
+  DisplayError error = HWDeviceDRM::SetDisplayMode(hw_display_mode);
+  if (error != kErrorNone) {
+    return error;
+  }
+
+  // update bit clk rates.
+  hw_panel_info_.bitclk_rates = bitclk_rates_;
+
+  return kErrorNone;
+}
+
 DisplayError HWPeripheralDRM::Validate(HWLayers *hw_layers) {
   HWLayersInfo &hw_layer_info = hw_layers->info;
   SetDestScalarData(hw_layer_info, true);
@@ -581,6 +593,32 @@ void HWPeripheralDRM::GetHWPanelMaxBrightness() {
 
   Sys::close_(fd);
   return;
+}
+
+DisplayError HWPeripheralDRM::SetFrameTrigger(FrameTriggerMode mode) {
+  sde_drm::DRMFrameTriggerMode drm_mode = sde_drm::DRMFrameTriggerMode::FRAME_DONE_WAIT_DEFAULT;
+  switch (mode) {
+  case kFrameTriggerDefault:
+    drm_mode = sde_drm::DRMFrameTriggerMode::FRAME_DONE_WAIT_DEFAULT;
+    break;
+  case kFrameTriggerSerialize:
+    drm_mode = sde_drm::DRMFrameTriggerMode::FRAME_DONE_WAIT_SERIALIZE;
+    break;
+  case kFrameTriggerPostedStart:
+    drm_mode = sde_drm::DRMFrameTriggerMode::FRAME_DONE_WAIT_POSTED_START;
+    break;
+  default:
+    DLOGE("Invalid frame trigger mode %d", (int32_t)mode);
+    return kErrorParameters;
+  }
+
+  int ret = drm_atomic_intf_->Perform(DRMOps::CONNECTOR_SET_FRAME_TRIGGER,
+                                      token_.conn_id, drm_mode);
+  if (ret) {
+    DLOGE("Failed to perform CONNECTOR_SET_FRAME_TRIGGER, drm_mode %d, ret %d", drm_mode, ret);
+    return kErrorUndefined;
+  }
+  return kErrorNone;
 }
 
 }  // namespace sdm

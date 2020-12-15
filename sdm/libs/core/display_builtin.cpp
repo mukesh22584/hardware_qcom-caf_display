@@ -90,6 +90,7 @@ DisplayError DisplayBuiltIn::Init() {
   if (hw_panel_info_.mode == kModeCommand) {
     event_list_ = {HWEvent::VSYNC,
                    HWEvent::EXIT,
+                   HWEvent::IDLE_NOTIFY,
                    HWEvent::SHOW_BLANK_EVENT,
                    HWEvent::THERMAL_LEVEL,
                    HWEvent::IDLE_POWER_COLLAPSE,
@@ -208,6 +209,16 @@ DisplayError DisplayBuiltIn::Commit(LayerStack *layer_stack) {
     }
   }
 
+  if (trigger_mode_debug_ != kFrameTriggerMax) {
+    error = hw_intf_->SetFrameTrigger(trigger_mode_debug_);
+    if (error != kErrorNone) {
+      DLOGE("Failed to set frame trigger mode %d, err %d", (int)trigger_mode_debug_, error);
+    } else {
+      DLOGV_IF(kTagDisplay, "Set frame trigger mode %d", trigger_mode_debug_);
+      trigger_mode_debug_ = kFrameTriggerMax;
+    }
+  }
+
   if (vsync_enable_) {
     DTRACE_BEGIN("RegisterVsync");
     // wait for previous frame's retire fence to signal.
@@ -315,6 +326,8 @@ DisplayError DisplayBuiltIn::SetDisplayMode(uint32_t mode) {
       return error;
     }
 
+    DisplayBase::ReconfigureDisplay();
+
     if (mode == kModeVideo) {
       ControlPartialUpdate(false /* enable */, &pending);
     } else if (mode == kModeCommand) {
@@ -332,11 +345,15 @@ DisplayError DisplayBuiltIn::SetDisplayMode(uint32_t mode) {
 }
 
 DisplayError DisplayBuiltIn::SetPanelBrightness(float brightness) {
-  lock_guard<recursive_mutex> obj(recursive_mutex_);
+  lock_guard<recursive_mutex> obj(brightness_lock_);
 
   if (brightness != -1.0f && !(0.0f <= brightness && brightness <= 1.0f)) {
     DLOGE("Bad brightness value = %f", brightness);
     return kErrorParameters;
+  }
+
+  if (state_ == kStateOff) {
+    return kErrorNone;
   }
 
   // -1.0f = off, 0.0f = min, 1.0f = max
@@ -412,6 +429,12 @@ DisplayError DisplayBuiltIn::SetRefreshRate(uint32_t refresh_rate, bool final_ra
       return error;
     }
 
+    if (handle_idle_timeout_) {
+      is_idle_timeout_ = true;
+    } else {
+      is_idle_timeout_ = false;
+    }
+
     error = comp_manager_->CheckEnforceSplit(display_comp_ctx_, refresh_rate);
     if (error != kErrorNone) {
       return error;
@@ -476,7 +499,7 @@ void DisplayBuiltIn::HwRecovery(const HWRecoveryEvent sdm_event_code) {
 }
 
 DisplayError DisplayBuiltIn::GetPanelBrightness(float *brightness) {
-  lock_guard<recursive_mutex> obj(recursive_mutex_);
+  lock_guard<recursive_mutex> obj(brightness_lock_);
 
   DisplayError err = kErrorNone;
   int level = 0;
@@ -604,6 +627,13 @@ DisplayError DisplayBuiltIn::SetDisplayDppsAdROI(void *payload) {
     DLOGE("Failed to set ad roi config, err %d", err);
 
   return err;
+}
+
+DisplayError DisplayBuiltIn::SetFrameTriggerMode(FrameTriggerMode mode) {
+  lock_guard<recursive_mutex> obj(recursive_mutex_);
+
+  trigger_mode_debug_ = mode;
+  return kErrorNone;
 }
 
 void DppsInfo::Init(DppsPropIntf *intf, const std::string &panel_name) {

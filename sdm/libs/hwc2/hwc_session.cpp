@@ -1729,6 +1729,14 @@ android::status_t HWCSession::notifyCallback(uint32_t command, const android::Pa
       status = SetColorModeFromClient(input_parcel);
       break;
 
+    case qService::IQService::SET_FRAME_TRIGGER_MODE:
+      if (!input_parcel) {
+        DLOGE("QService command = %d: input_parcel needed.", command);
+        break;
+      }
+      status = SetFrameTriggerMode(input_parcel);
+      break;
+
     default:
       DLOGW("QService command = %d is not supported.", command);
       break;
@@ -1946,6 +1954,25 @@ android::status_t HWCSession::SetAd4RoiConfig(const android::Parcel *input_parce
 
   return static_cast<android::status_t>(SetDisplayDppsAdROI(display_id, h_s, h_e, v_s,
                                                             v_e, f_in, f_out));
+}
+
+android::status_t HWCSession::SetFrameTriggerMode(const android::Parcel *input_parcel) {
+  auto display_id = static_cast<int>(input_parcel->readInt32());
+  auto mode = static_cast<uint32_t>(input_parcel->readInt32());
+
+  int disp_idx = GetDisplayIndex(display_id);
+  if (disp_idx == -1) {
+    DLOGE("Invalid display = %d", display_id);
+    return -EINVAL;
+  }
+
+  auto err = CallDisplayFunction(static_cast<hwc2_device_t *>(this),
+                                 static_cast<hwc2_display_t>(disp_idx),
+                                 &HWCDisplay::SetFrameTriggerMode, mode);
+  if (err != HWC2_ERROR_NONE)
+    return -EINVAL;
+
+  return 0;
 }
 
 android::status_t HWCSession::SetColorModeWithRenderIntentOverride(
@@ -3185,7 +3212,7 @@ int32_t HWCSession::GetReadbackBufferAttributes(hwc2_device_t *device, hwc2_disp
   }
 
   if (display != HWC_DISPLAY_PRIMARY) {
-    return HWC2_ERROR_BAD_DISPLAY;
+    return HWC2_ERROR_UNSUPPORTED;
   }
 
   HWCSession *hwc_session = static_cast<HWCSession *>(device);
@@ -3210,7 +3237,7 @@ int32_t HWCSession::SetReadbackBuffer(hwc2_device_t *device, hwc2_display_t disp
   }
 
   if (display != HWC_DISPLAY_PRIMARY) {
-    return HWC2_ERROR_BAD_DISPLAY;
+    return HWC2_ERROR_UNSUPPORTED;
   }
 
   HWCSession *hwc_session = static_cast<HWCSession *>(device);
@@ -3236,7 +3263,7 @@ int32_t HWCSession::GetReadbackBufferFence(hwc2_device_t *device, hwc2_display_t
   }
 
   if (display != HWC_DISPLAY_PRIMARY) {
-    return HWC2_ERROR_BAD_DISPLAY;
+    return HWC2_ERROR_UNSUPPORTED;
   }
 
   return CallDisplayFunction(device, display, &HWCDisplay::GetReadbackBufferFence, release_fence);
@@ -3315,7 +3342,22 @@ int32_t HWCSession::GetDisplayBrightnessSupport(hwc2_device_t *device, hwc2_disp
 
 int32_t HWCSession::SetDisplayBrightness(hwc2_device_t *device, hwc2_display_t display,
                                          float brightness) {
-  return CallDisplayFunction(device, display, &HWCDisplay::SetPanelBrightness, brightness);
+  if (!device) {
+    return HWC2_ERROR_BAD_PARAMETER;
+  }
+
+  if (display >= HWCCallbacks::kNumDisplays) {
+    return HWC2_ERROR_BAD_DISPLAY;
+  }
+
+  HWCSession *hwc_session = static_cast<HWCSession *>(device);
+  HWCDisplay *hwc_display = hwc_session->hwc_display_[display];
+
+  if (!hwc_display) {
+    return HWC2_ERROR_BAD_PARAMETER;
+  }
+
+  return INT32(hwc_display->SetPanelBrightness(brightness));
 }
 
 android::status_t HWCSession::SetQSyncMode(const android::Parcel *input_parcel) {
